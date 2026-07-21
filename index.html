@@ -445,11 +445,11 @@
      Reglas de negocio: rangos de monto, tasas y plazos
      ========================================================= */
   var RANGOS = [
-    { min: 30000, max: 40000, tasaAnual: 1.08,
+    { min: 30000, max: 40000, tasaAnual: 1.05,
       plazos: ["6 MESES","8 MESES","8 BISEMANAS","12 BISEMANAS","16 BISEMANAS"] },
-    { min: 40001, max: 80000, tasaAnual: 1.02,
+    { min: 40001, max: 80000, tasaAnual: 1.05,
       plazos: ["6 MESES","8 MESES","12 MESES","8 BISEMANAS","12 BISEMANAS","16 BISEMANAS"] },
-    { min: 80001, max: 500000, tasaAnual: 0.96,
+    { min: 80001, max: 500000, tasaAnual: 1.05,
       plazos: ["6 MESES","8 MESES","12 MESES","18 MESES","24 MESES"] }
   ];
   var IVA = 0.16;
@@ -466,6 +466,28 @@
   function fmtMoney(v){ return mxn.format(v); }
 
   function round2(v){ return Math.round((v + Number.EPSILON) * 100) / 100; }
+
+  // Equivalente a ROUNDDOWN(valor, 2) de Excel para saldos positivos.
+  function roundDown2(v){ return Math.trunc((v + Number.EPSILON) * 100) / 100; }
+
+  // Equivalente al EDATE usado por la calculadora de trabajo.
+  function addMonthsExcel(fecha, meses){
+    var year = fecha.getFullYear();
+    var month = fecha.getMonth() + meses;
+    var day = fecha.getDate();
+    var ultimoDia = new Date(year, month + 1, 0).getDate();
+    return new Date(year, month, Math.min(day, ultimoDia));
+  }
+
+  function addDays(fecha, dias){
+    return new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate() + dias);
+  }
+
+  function daysBetween(inicio, fin){
+    var inicioUTC = Date.UTC(inicio.getFullYear(), inicio.getMonth(), inicio.getDate());
+    var finUTC = Date.UTC(fin.getFullYear(), fin.getMonth(), fin.getDate());
+    return Math.round((finUTC - inicioUTC) / 86400000);
+  }
 
   /* Vivo: formatea mientras el usuario escribe (separadores de miles) */
   function liveFormat(str){
@@ -611,14 +633,18 @@
     var frecuencia = getFrecuencia(plazoStr);
     var tasaAnual = rango.tasaAnual;
 
-    var tasaOrdinaria = frecuencia === 'MENSUAL' ? (tasaAnual / 12) : ((tasaAnual / 360) * 14);
-    var tasaTotal = tasaOrdinaria * (1 + IVA);
+    // La cuota fija usa el período contractual: 30 días mensual y 14 días bisemanal.
+    // Fórmula equivalente a: PMT((tasaAnual / 360 * díasBase) * 1.16, n, -montoFinanciar).
+    var diasPeriodoBase = frecuencia === 'MENSUAL' ? 30 : 14;
+    var tasaPeriodoBase = (tasaAnual / 360) * diasPeriodoBase;
+    var tasaTotal = tasaPeriodoBase * (1 + IVA);
 
     var comisionPesos = round2(monto * COMISION_PCT);
     var montoFinanciar = monto + comisionPesos;
 
     var factor = Math.pow(1 + tasaTotal, n);
-    var pagoFijo = round2(montoFinanciar * (tasaTotal * factor) / (factor - 1));
+    // Excel conserva la precisión completa de PMT y solo muestra dos decimales.
+    var pagoFijo = montoFinanciar * (tasaTotal * factor) / (factor - 1);
 
     /* ---- Construcción de la tabla de amortización ---- */
     var filas = [];
@@ -626,22 +652,34 @@
 
     var saldo = montoFinanciar;
     var sumAbono = 0, sumInteres = 0, sumIva = 0, sumPago = 0;
+    // La hoja de trabajo usa TODAY() como fecha inicial.
+    var fechaAnterior = new Date();
+    fechaAnterior.setHours(0, 0, 0, 0);
 
     for (var i = 1; i <= n; i++){
       var capital = saldo;
-      var interes = capital * tasaOrdinaria;
+      var fechaPago = frecuencia === 'MENSUAL'
+        ? addMonthsExcel(fechaAnterior, 1)
+        : addDays(fechaAnterior, 14);
+      var diasPeriodo = daysBetween(fechaAnterior, fechaPago);
+
+      // Interés ordinario sobre saldo insoluto, base 360 y días reales del período.
+      // Excel redondea el interés a 2 decimales antes de calcular el IVA.
+      var interes = round2(capital * ((tasaAnual / 360) * diasPeriodo));
       var ivaInt = interes * IVA;
       var abono, pagoTotal;
 
       if (i === n){
-        abono = capital; // liquida el saldo restante exactamente
+        // En el último período el abono se ajusta para liquidar exactamente el saldo.
+        abono = capital;
         saldo = 0;
-        pagoTotal = pagoFijo;
       } else {
         abono = pagoFijo - interes - ivaInt;
-        saldo = capital - abono;
-        pagoTotal = pagoFijo;
+        // Equivalente a ABS(ROUNDDOWN(capital - abono, 2)) de Excel.
+        saldo = Math.abs(roundDown2(capital - abono));
       }
+      // Equivalente a Abono + Interés + IVA; el último pago puede ser distinto.
+      pagoTotal = abono + interes + ivaInt;
 
       filas.push({ n: i, capital: capital, abono: abono, interes: interes, ivaInt: ivaInt, pagoTotal: pagoTotal, saldo: saldo });
 
@@ -649,6 +687,7 @@
       sumInteres += interes;
       sumIva += ivaInt;
       sumPago += pagoTotal;
+      fechaAnterior = fechaPago;
     }
 
     lastResult = {
