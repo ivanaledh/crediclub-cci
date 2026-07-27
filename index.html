@@ -78,7 +78,7 @@
   .page-header{
     display:flex;
     justify-content: space-between;
-    align-items: flex-end;
+    align-items: center;
     flex-wrap: wrap;
     gap: 16px;
     padding: 4px 4px 20px;
@@ -100,10 +100,11 @@
     margin-top: 4px;
   }
   .header-right{
-    text-align: right;
     display: flex;
     align-items: center;
-    gap: 12px;
+    justify-content: flex-end;
+    margin-left: auto;
+    gap: 0;
   }
   .theme-toggle{
     position: relative;
@@ -177,6 +178,7 @@
     overflow: hidden;
     flex-shrink: 0;
     box-shadow: 0 2px 6px rgba(31,34,48,0.12);
+    display: none;
   }
   .logo-badge img{
     width: 100%;
@@ -186,6 +188,7 @@
   }
   .header-right .badge-text{
     text-align: right;
+    display: none;
   }
   .badge{
     font-weight: 700;
