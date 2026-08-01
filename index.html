@@ -504,7 +504,6 @@
     <div class="actions">
       <button class="btn btn-primary" id="btnCalcular">Calcular</button>
       <button class="btn btn-ghost" id="btnLimpiar">Limpiar</button>
-      <button class="btn btn-outline" id="btnCSV" disabled>Descargar tabla en CSV</button>
     </div>
   </section>
 
@@ -661,7 +660,6 @@
   var plazoHint        = document.getElementById('plazoHint');
   var btnCalcular     = document.getElementById('btnCalcular');
   var btnLimpiar      = document.getElementById('btnLimpiar');
-  var btnCSV          = document.getElementById('btnCSV');
   var themeToggle     = document.getElementById('themeToggle');
   var summaryCard      = document.getElementById('summaryCard');
   var scriptCard       = document.getElementById('scriptCard');
@@ -670,7 +668,7 @@
   var amortBody        = document.getElementById('amortBody');
   var amortFoot        = document.getElementById('amortFoot');
 
-  var lastResult = null; // guarda el último cálculo para exportar a CSV
+  var lastResult = null;
 
 
   /* =========================================================
@@ -838,7 +836,6 @@
     renderScript(lastResult);
     renderTabla(lastResult);
     mostrarResultados();
-    btnCSV.disabled = false;
   }
 
   /* =========================================================
@@ -929,7 +926,6 @@
     summaryCard.hidden = true;
     scriptCard.hidden = true;
     tableCard.hidden = true;
-    btnCSV.disabled = true;
     lastResult = null;
   }
 
@@ -945,54 +941,10 @@
   }
 
   /* =========================================================
-     Descargar CSV
-     ========================================================= */
-  function numCsv(v){ return v === null ? '' : v.toFixed(2); }
-
-  function descargarCSV(){
-    if (!lastResult) return;
-    var r = lastResult;
-    var lines = [];
-
-    lines.push(['Calculadora de Crédito Productivo Individual'].join(','));
-    lines.push(['Monto a solicitar', r.monto.toFixed(2)].join(','));
-    lines.push(['Plazo', r.plazoStr].join(','));
-    lines.push(['Pagos fijos', r.n].join(','));
-    lines.push(['Frecuencia de pago', r.frecuencia].join(','));
-    lines.push(['Tasa de interes anual', (r.tasaAnual*100).toFixed(2) + '%'].join(','));
-    lines.push(['IVA', (IVA*100).toFixed(2) + '%'].join(','));
-    lines.push(['Comision por apertura', (COMISION_PCT*100).toFixed(2) + '%'].join(','));
-    lines.push(['Comision por apertura en pesos', r.comisionPesos.toFixed(2)].join(','));
-    lines.push(['Monto a financiar', r.montoFinanciar.toFixed(2)].join(','));
-    lines.push(['Pago fijo por periodo', r.pagoFijo.toFixed(2)].join(','));
-    lines.push('');
-    lines.push(['N Pago','Capital','Abono a Capital','Intereses Ordinarios','IVA de los intereses','Pago Total','Saldo insoluto'].join(','));
-
-    r.filas.forEach(function(f){
-      lines.push([f.n, numCsv(f.capital), numCsv(f.abono), numCsv(f.interes), numCsv(f.ivaInt), numCsv(f.pagoTotal), numCsv(f.saldo)].join(','));
-    });
-
-    lines.push(['Total','', r.totales.abono.toFixed(2), r.totales.interes.toFixed(2), r.totales.iva.toFixed(2), r.totales.pago.toFixed(2), ''].join(','));
-
-    var csvContent = lines.join('\r\n');
-    var blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    var fileMonto = Math.round(r.monto);
-    a.href = url;
-    a.download = 'tabla_amortizacion_' + fileMonto + '_' + r.plazoStr.replace(/\s+/g,'_') + '.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  /* =========================================================
      Listeners
      ========================================================= */
   btnCalcular.addEventListener('click', calcular);
   btnLimpiar.addEventListener('click', limpiar);
-  btnCSV.addEventListener('click', descargarCSV);
 
   themeToggle.addEventListener('click', function(){
     var nuevoTema = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
