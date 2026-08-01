@@ -1,3 +1,9 @@
+Listo. Apliqué a la calculadora 1 el diseño, colores, favicon y modo oscuro de la calculadora 2, manteniendo intacta su lógica original, montos, plazos bisemanales y funciones existentes.
+
+También verifiqué el cálculo de $80,000 a 6 meses y continúa dando $18,449.41.
+
+calculadora_1_diseno_calculadora_2.html
+
 <!DOCTYPE html>
 <html lang="es-MX">
 <head>
@@ -504,6 +510,7 @@
     <div class="actions">
       <button class="btn btn-primary" id="btnCalcular">Calcular</button>
       <button class="btn btn-ghost" id="btnLimpiar">Limpiar</button>
+      <button class="btn btn-outline" id="btnCSV" disabled>Descargar tabla en CSV</button>
     </div>
   </section>
 
@@ -569,11 +576,9 @@
      ========================================================= */
   var RANGOS = [
     { min: 30000, max: 40000, tasaAnual: 1.05,
-      plazos: ["6 MESES","8 MESES"] },
-    { min: 40001, max: 50999.99, tasaAnual: 1.05,
-      plazos: ["6 MESES","8 MESES"] },
-    { min: 51000, max: 80000, tasaAnual: 1.05,
-      plazos: ["6 MESES","8 MESES","12 MESES"] },
+      plazos: ["6 MESES","8 MESES","8 BISEMANAS","12 BISEMANAS","16 BISEMANAS"] },
+    { min: 40001, max: 80000, tasaAnual: 1.05,
+      plazos: ["6 MESES","8 MESES","12 MESES","8 BISEMANAS","12 BISEMANAS","16 BISEMANAS"] },
     { min: 80001, max: 500000, tasaAnual: 1.05,
       plazos: ["6 MESES","8 MESES","12 MESES","18 MESES","24 MESES"] }
   ];
@@ -602,6 +607,10 @@
     var day = fecha.getDate();
     var ultimoDia = new Date(year, month + 1, 0).getDate();
     return new Date(year, month, Math.min(day, ultimoDia));
+  }
+
+  function addDays(fecha, dias){
+    return new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate() + dias);
   }
 
   function daysBetween(inicio, fin){
@@ -638,8 +647,8 @@
     return m ? parseInt(m[1], 10) : 0;
   }
 
-  function getFrecuencia(){
-    return 'MENSUAL';
+  function getFrecuencia(plazoStr){
+    return /BISEMANAS/i.test(plazoStr) ? 'BISEMANAL' : 'MENSUAL';
   }
 
   function getRango(monto){
@@ -658,6 +667,7 @@
   var plazoHint        = document.getElementById('plazoHint');
   var btnCalcular     = document.getElementById('btnCalcular');
   var btnLimpiar      = document.getElementById('btnLimpiar');
+  var btnCSV          = document.getElementById('btnCSV');
   var themeToggle     = document.getElementById('themeToggle');
   var summaryCard      = document.getElementById('summaryCard');
   var scriptCard       = document.getElementById('scriptCard');
@@ -666,10 +676,11 @@
   var amortBody        = document.getElementById('amortBody');
   var amortFoot        = document.getElementById('amortFoot');
 
-  var lastResult = null; // guarda el último cálculo
+  var lastResult = null; // guarda el último cálculo para exportar a CSV
+
 
   /* =========================================================
-     Modo claro / oscuro
+     Modo claro / oscuro (solo presentación visual)
      ========================================================= */
   function actualizarBotonTema(){
     var oscuro = document.documentElement.dataset.theme === 'dark';
@@ -766,7 +777,7 @@
     var frecuencia = getFrecuencia(plazoStr);
     var tasaAnual = rango.tasaAnual;
 
-    // La cuota fija usa el período contractual mensual de 30 días.
+    // La cuota fija usa el período contractual: 30 días mensual y 14 días bisemanal.
     // Fórmula equivalente a: PMT((tasaAnual / 360 * díasBase) * 1.16, n, -montoFinanciar).
     var diasPeriodoBase = frecuencia === 'MENSUAL' ? 30 : 14;
     var tasaPeriodoBase = (tasaAnual / 360) * diasPeriodoBase;
@@ -791,7 +802,9 @@
 
     for (var i = 1; i <= n; i++){
       var capital = saldo;
-      var fechaPago = addMonthsExcel(fechaAnterior, 1);
+      var fechaPago = frecuencia === 'MENSUAL'
+        ? addMonthsExcel(fechaAnterior, 1)
+        : addDays(fechaAnterior, 14);
       var diasPeriodo = daysBetween(fechaAnterior, fechaPago);
 
       // Interés ordinario sobre saldo insoluto, base 360 y días reales del período.
@@ -831,6 +844,7 @@
     renderScript(lastResult);
     renderTabla(lastResult);
     mostrarResultados();
+    btnCSV.disabled = false;
   }
 
   /* =========================================================
@@ -838,8 +852,10 @@
      ========================================================= */
   function renderScript(r){
     var box = document.getElementById('scriptBox');
-    var unidadPlural = 'meses';
-    var verbo = 'por mes';
+    var esMensual = r.frecuencia === 'MENSUAL';
+    var unidad = esMensual ? 'mes' : 'bisemana';
+    var unidadPlural = esMensual ? 'meses' : 'bisemanas';
+    var verbo = esMensual ? 'por mes' : 'por bisemana';
 
     // Texto plano (para copiar)
     var plain =
@@ -850,7 +866,7 @@
 
     box.dataset.plain = plain;
 
-    // HTML con destacados en aqua
+    // HTML con destacados en magenta
     box.innerHTML =
       'Apreciable cliente, basándonos en el monto estimado a solicitar, ' +
       'si usted solicita <span class="script-highlight">' + fmtMoney(r.monto) + '</span>, ' +
@@ -919,6 +935,7 @@
     summaryCard.hidden = true;
     scriptCard.hidden = true;
     tableCard.hidden = true;
+    btnCSV.disabled = true;
     lastResult = null;
   }
 
@@ -934,10 +951,55 @@
   }
 
   /* =========================================================
+     Descargar CSV
+     ========================================================= */
+  function numCsv(v){ return v === null ? '' : v.toFixed(2); }
+
+  function descargarCSV(){
+    if (!lastResult) return;
+    var r = lastResult;
+    var lines = [];
+
+    lines.push(['Calculadora de Crédito Productivo Individual'].join(','));
+    lines.push(['Monto a solicitar', r.monto.toFixed(2)].join(','));
+    lines.push(['Plazo', r.plazoStr].join(','));
+    lines.push(['Pagos fijos', r.n].join(','));
+    lines.push(['Frecuencia de pago', r.frecuencia].join(','));
+    lines.push(['Tasa de interes anual', (r.tasaAnual*100).toFixed(2) + '%'].join(','));
+    lines.push(['IVA', (IVA*100).toFixed(2) + '%'].join(','));
+    lines.push(['Comision por apertura', (COMISION_PCT*100).toFixed(2) + '%'].join(','));
+    lines.push(['Comision por apertura en pesos', r.comisionPesos.toFixed(2)].join(','));
+    lines.push(['Monto a financiar', r.montoFinanciar.toFixed(2)].join(','));
+    lines.push(['Pago fijo por periodo', r.pagoFijo.toFixed(2)].join(','));
+    lines.push('');
+    lines.push(['N Pago','Capital','Abono a Capital','Intereses Ordinarios','IVA de los intereses','Pago Total','Saldo insoluto'].join(','));
+
+    r.filas.forEach(function(f){
+      lines.push([f.n, numCsv(f.capital), numCsv(f.abono), numCsv(f.interes), numCsv(f.ivaInt), numCsv(f.pagoTotal), numCsv(f.saldo)].join(','));
+    });
+
+    lines.push(['Total','', r.totales.abono.toFixed(2), r.totales.interes.toFixed(2), r.totales.iva.toFixed(2), r.totales.pago.toFixed(2), ''].join(','));
+
+    var csvContent = lines.join('\r\n');
+    var blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    var fileMonto = Math.round(r.monto);
+    a.href = url;
+    a.download = 'tabla_amortizacion_' + fileMonto + '_' + r.plazoStr.replace(/\s+/g,'_') + '.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  /* =========================================================
      Listeners
      ========================================================= */
   btnCalcular.addEventListener('click', calcular);
   btnLimpiar.addEventListener('click', limpiar);
+  btnCSV.addEventListener('click', descargarCSV);
+
   themeToggle.addEventListener('click', function(){
     var nuevoTema = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = nuevoTema;
